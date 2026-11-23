@@ -99,6 +99,8 @@ canvas{display:block}
 
 .toast{position:absolute;left:50%;top:22%;transform:translate(-50%,-10px);opacity:0;transition:opacity .35s,transform .35s;background:#08172ce8;border:1px solid #52f6ff88;border-radius:14px;padding:13px 22px;text-align:center;box-shadow:0 0 35px #52f6ff22;font:600 11px var(--font-display);letter-spacing:.12em;max-width:80vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.jumping{border-color:#52f6ff;color:#d8fdff;background:#0a1f3a}
+.toast.sliding{border-color:#5fa8ff;color:#e0ffff;background:#0a1f3a}
 .toast.good{border-color:#52f6ff;color:#d8fdff}
 .toast.warn{border-color:#ff7a5c;color:#ffd9cf;box-shadow:0 0 35px #ff7a5c22}
 .toast.gold{border-color:#ffd76a;color:#fff3cf;box-shadow:0 0 35px #ffd76a22}

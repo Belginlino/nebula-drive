@@ -282,6 +282,7 @@
   let selectedLevel = 0;
   let run = null;
   let activeCfg = LAYOUTS.flow;
+  let playerState = 'running'; // running, jumping, sliding
   let roadWidth = 17;
   let roadGlow = save.settings.glow;
   let paintColor = save.settings.paint;
@@ -1023,8 +1024,10 @@
 
   /* ── obstacles ──────────────────────────────────────────── */
   function createObstacles() {
+    GEO.coin = new THREE.CircleGeometry(0.8, 16);
     GEO.cube = new THREE.BoxGeometry(2.2, 2.2, 2.2);
     GEO.gate = new THREE.TorusGeometry(3, 0.18, 10, 40);
+    MAT.coin = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.9 });
     MAT.cube = new THREE.MeshStandardMaterial({
       color: 0x7c2eff,
       metalness: 0.6,
@@ -1034,31 +1037,43 @@
     });
     MAT.gate = new THREE.MeshBasicMaterial({ color: 0x52f6ff });
     for (let i = 0; i < OBS_COUNT; i++) {
-      const mesh = new THREE.Mesh(GEO.cube, MAT.cube);
+      const isCoin = Math.random() < 0.25; // 25% chance to be a coin
+      const mesh = isCoin ? new THREE.Mesh(GEO.coin, MAT.coin) : new THREE.Mesh(GEO.cube, MAT.cube);
       mesh.visible = false;
       mesh.matrixAutoUpdate = true;
       scene.add(mesh);
-      obstacles.push({ mesh, z: 0, prevZ: 0, lane: 0, type: 'cube', hit: false, spin: 0 });
+      obstacles.push({
+        mesh,
+        z: 0,
+        prevZ: 0,
+        lane: 0,
+        type: isCoin ? 'coin' : 'cube',
+        hit: false,
+        spin: 0,
+        value: isCoin ? 100 + Math.random() * 200 : 0
+      });
     }
   }
 
   function respawnObstacle(o, z) {
     const hazard = run ? run.hazard : 0.45;
-    const gate = Math.random() > hazard;
+    const isCoin = o.type === 'coin'; // preserve coin type
+    const gate = !isCoin && Math.random() > hazard;
     const half = roadWidth / 2;
-    o.type = gate ? 'gate' : 'cube';
+    o.type = isCoin ? 'coin' : (gate ? 'gate' : 'cube');
     o.hit = false;
     o.spin = Math.random() * Math.PI * 2;
     o.z = z;
     o.prevZ = z;
-    o.lane = gate ? rand(-(half - 3.2), half - 3.2) : rand(-(half - 2.4), half - 2.4);
-    o.mesh.geometry = gate ? GEO.gate : GEO.cube;
-    o.mesh.material = gate ? MAT.gate : MAT.cube;
+    o.lane = isCoin ? rand(-(roadWidth / 2 - 1), roadWidth / 2 - 1) : (gate ? rand(-(half - 3.2), half - 3.2) : rand(-(half - 2.4), half - 2.4));
+    o.mesh.geometry = isCoin ? GEO.coin : (gate ? GEO.gate : GEO.cube);
+    o.mesh.material = isCoin ? MAT.coin : (gate ? MAT.gate : MAT.cube);
     o.mesh.scale.setScalar(1);
     o.mesh.visible = true;
     const t = trackAt(z);
-    o.mesh.position.set(t.x + o.lane, gate ? 2.0 : 1.05, z);
-    o.mesh.rotation.set(0, t.heading, gate ? o.spin : 0);
+    o.mesh.position.set(t.x + o.lane, isCoin ? 0.5 : (gate ? 2.0 : 1.05), z);
+    o.mesh.rotation.set(0, t.heading, isCoin ? 0 : (gate ? o.spin : 0));
+    o.value = isCoin ? 100 + Math.random() * 200 : 0;
   }
 
   function seedObstacles() {
@@ -1224,7 +1239,10 @@
       gatePoints: 0,
       streak: 0,
       shake: 0,
-      lastAudio: 0
+      lastAudio: 0,
+      velocityY: 0,
+      isJumping: false,
+      isSliding: false
     };
 
     applyRoadStyle();
@@ -1302,6 +1320,29 @@
   function update(dt) {
     const R = run;
     R.elapsed += dt;
+
+    /* ── player jump/slide physics ──────────────────── */
+    if (R.isJumping) {
+      R.velocityY += -0.8 * dt;
+      R.jumpTime += dt;
+      car.position.y = 0.5 + R.velocityY * R.jumpTime;
+      if (R.jumpTime > 0.8 || R.velocityY < 0 && car.position.y < 0.05) {
+        R.isJumping = false;
+        R.jumpTime = 0;
+        R.velocityY = 0;
+        car.position.y = 0;
+      }
+    } else if (R.isSliding) {
+      R.slideTime += dt;
+      car.position.y = -0.3;
+      if (R.slideTime > 0.5) {
+        R.isSliding = false;
+        R.slideTime = 0;
+        car.position.y = 0;
+      }
+    } else {
+      car.position.y = Math.sin(R.elapsed * 7) * 0.045;
+    }
 
     if (R.mode === 'endless') {
       R.hazard = Math.min(0.72, 0.34 + R.distance * 0.055);
@@ -1404,10 +1445,24 @@
         respawnObstacle(o, farthestObstacleZ() - rand(70, 110));
         continue;
       }
+      const isCoin = o.type === 'coin';
       const gate = o.type === 'gate';
       const t = trackAt(o.z);
       o.mesh.position.x = t.x + o.lane;
       o.mesh.position.z = o.z;
+      if (isCoin) {
+        /* ── coin collection ──────────────────────── */
+        const coinCollected = o.prevZ < CAR_Z && o.z >= CAR_Z && Math.abs(o.lane - carLane) < 1.5;
+        if (coinCollected && !o.hit) {
+          o.hit = true;
+          R.score += o.value;
+          R.gates += o.value / 10; /* scale gates from coin value */
+          showToast('COIN · +' + Math.round(o.value), 'good');
+          o.mesh.visible = false;
+          respawnObstacle(o, farthestObstacleZ() - rand(70, 110));
+          continue;
+        }
+      }
       if (gate) {
         o.spin += dt * 1.1;
         o.mesh.rotation.set(0, t.heading, o.spin);
@@ -1505,6 +1560,17 @@
       ui.rocketState.style.color = '#a3b5d6';
     }
     ui.rocketProgress.style.width = Math.min(100, (R.distance / UNLOCK_KM) * 100) + '%';
+
+    /* jump/slide state display */
+    if (R.isJumping) {
+      ui.toast.textContent = 'JUMP';
+      ui.toast.className = 'toast show jumping';
+    } else if (R.isSliding) {
+      ui.toast.textContent = 'SLIDE';
+      ui.toast.className = 'toast show sliding';
+    } else {
+      ui.toast.className = 'toast';
+    }
 
     ui.gateCount.textContent = String(R.gates);
     ui.streak.textContent = '×' + Math.max(1, R.streak);
@@ -1800,13 +1866,15 @@
 
   /* ── input ──────────────────────────────────────────────── */
   const pressed = new Set();
-  const touchHeld = { accel: false, brake: false, left: false, right: false, nitro: false };
+  const touchHeld = { accel: false, brake: false, left: false, right: false, nitro: false, jump: false, slide: false };
   const ACT_KEYS = {
     accel: ['KeyW', 'ArrowUp'],
     brake: ['KeyS', 'ArrowDown'],
     left: ['KeyA', 'ArrowLeft'],
     right: ['KeyD', 'ArrowRight'],
-    nitro: ['ShiftLeft', 'ShiftRight']
+    nitro: ['ShiftLeft', 'ShiftRight'],
+    jump: ['Space'],
+    slide: ['KeyS', 'ArrowDown']
   };
 
   function held(action) {
@@ -1933,7 +2001,16 @@
       }
       if (e.repeat) return;
       if (e.code === 'KeyR') activateRocket();
-      else if (e.code === 'KeyM') toggleSound();
+      else if (e.code === 'Space') {
+        if (state === 'running' && !R.isJumping && !R.isSliding) {
+          R.isJumping = true;
+          R.velocityY = 4.5;
+        }
+      } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+        if (state === 'running' && !R.isJumping && !R.isSliding) {
+          R.isSliding = true;
+        }
+      } else if (e.code === 'KeyM') toggleSound();
       else if (e.code === 'Escape') {
         if (state === 'running') pauseRun();
         else if (state === 'paused') resumeRun();
@@ -1961,6 +2038,8 @@
         e.preventDefault();
         btn.classList.remove('active');
         if (action !== 'rocket') touchHeld[action] = false;
+        if (action === 'jump') R.isJumping = false;
+        if (action === 'slide') R.isSliding = false;
       };
       btn.addEventListener('pointerdown', down);
       btn.addEventListener('pointerup', up);
