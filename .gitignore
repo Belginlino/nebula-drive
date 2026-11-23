@@ -1,0 +1,19 @@
+# Logs
+logs
+*.log
+
+# Runtime stuff
+.DS_Store
+node_modules/
+/vendor/three.min.js
+
+# Local dev server
+*.pyc
+__pycache__/
+
+# Build / dist
+dist/
+build/
+
+# Local storage / saves are not tracked
+# (handled via gitignore for local dev only)
