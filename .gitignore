@@ -5,7 +5,6 @@ logs
 # Runtime stuff
 .DS_Store
 node_modules/
-/vendor/three.min.js
 
 # Local dev server
 *.pyc
