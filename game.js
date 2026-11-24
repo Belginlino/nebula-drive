@@ -1,6 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   NEBULA DRIVE · build 2.0
+   NEBULA DRIVE · build 2.1
    A neon arcade roadster flight simulator. Runs fully offline.
+
+   New in 2.1
+     · jump / slide runner mechanics (keyboard + touch + swipes)
+     · Subway-Surfers style coins, overhead barriers and cube hazards
+     · full mobile support: swipe steering, large touch targets, safe areas,
+       portrait + landscape HUD layouts, fullscreen, reduced render cost
+     · fixed jump/slide NaN state, duplicate key handling and toast clearing
 
    Fixed vs 1.0
      · swept obstacle collision (no tunnelling at rocket speed)
@@ -48,6 +55,9 @@
   const pad3 = (n) => String(n).padStart(3, '0');
   const fmt = (n) => Math.round(n).toLocaleString('en-US');
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const MOBILE = !!(window.matchMedia && window.matchMedia('(hover:none) and (pointer:coarse)').matches);
+  const isPortrait = () => window.innerHeight > window.innerWidth * 1.05;
+  const baseFov = () => (isPortrait() ? 80 : 66);
 
   /* ── persistent save ─────────────────────────────────────── */
   const SAVE_KEY = 'nebula-drive-v2';
@@ -223,6 +233,9 @@
       src.stop(t + dur + 0.02);
     },
     ui() { this.tone(920, 0.05, 'square', 0.022); },
+    coin() { this.tone(1180, 0.06, 'triangle', 0.045); this.tone(1560, 0.09, 'triangle', 0.04, 0.045); },
+    jump() { this.tone(300, 0.16, 'triangle', 0.055, 0, 620); },
+    slide() { this.noiseHit(0.22, 0.1, 900, 180); },
     gate(streak) { this.tone(720 + Math.min(streak, 5) * 55, 0.1, 'sine', 0.07); this.tone(1080 + Math.min(streak, 5) * 70, 0.16, 'sine', 0.06, 0.06); },
     impact() { this.noiseHit(0.34, 0.28, 1100, 90); this.tone(110, 0.38, 'sine', 0.17, 0, 42); },
     transform() { this.tone(90, 0.9, 'sawtooth', 0.1, 0, 430); this.noiseHit(0.8, 0.1, 320, 2600); },
@@ -274,15 +287,14 @@
   const SEG_COUNT = 70;
   const RECYCLE_Z = 46;
   const UNLOCK_KM = 0.5;
-  const OBS_COUNT = 18;
-  const CITY_N = 96;
+  const OBS_COUNT = 22;
+  const CITY_N = MOBILE ? 64 : 96;
 
   let state = 'menu';
   let mode = 'endless';
   let selectedLevel = 0;
   let run = null;
   let activeCfg = LAYOUTS.flow;
-  let playerState = 'running'; // running, jumping, sliding
   let roadWidth = 17;
   let roadGlow = save.settings.glow;
   let paintColor = save.settings.paint;
@@ -322,6 +334,8 @@
     speed: $('speed'),
     distance: $('distance'),
     score: $('score'),
+    coinCount: $('coinCount'),
+    actionChip: $('actionChip'),
     rocketState: $('rocketState'),
     rocketProgress: $('rocketProgress'),
     integrity: $('integrity'),
@@ -444,8 +458,8 @@
     camera = new THREE.PerspectiveCamera(66, window.innerWidth / window.innerHeight, 0.1, 2600);
     camera.position.set(0, 6.4, 15.5);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer = new THREE.WebGLRenderer({ antialias: !MOBILE, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MOBILE ? 1.5 : 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -468,6 +482,8 @@
     createStreaks();
 
     window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', () => setTimeout(onResize, 260));
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
   }
 
   function createLights() {
@@ -524,8 +540,9 @@
 
   function createStars() {
     starTex = radialTexture('rgba(255,255,255,1)', 'rgba(190,226,255,0.55)', 64);
-    const positions = new Float32Array(1600 * 3);
-    for (let i = 0; i < 1600; i++) {
+    const starCount = MOBILE ? 900 : 1600;
+    const positions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
       positions[i * 3] = rand(-950, 950);
       positions[i * 3 + 1] = rand(-20, 340);
       positions[i * 3 + 2] = rand(-1400, -520);
@@ -1024,10 +1041,17 @@
 
   /* ── obstacles ──────────────────────────────────────────── */
   function createObstacles() {
-    GEO.coin = new THREE.CircleGeometry(0.8, 16);
+    GEO.coin = new THREE.CircleGeometry(0.78, 20);
     GEO.cube = new THREE.BoxGeometry(2.2, 2.2, 2.2);
     GEO.gate = new THREE.TorusGeometry(3, 0.18, 10, 40);
-    MAT.coin = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.9 });
+    GEO.bar = new THREE.BoxGeometry(6.4, 2.1, 0.85);
+    MAT.coin = new THREE.MeshStandardMaterial({
+      color: 0xffc93c,
+      emissive: 0xffa000,
+      emissiveIntensity: 0.8,
+      metalness: 0.9,
+      roughness: 0.22
+    });
     MAT.cube = new THREE.MeshStandardMaterial({
       color: 0x7c2eff,
       metalness: 0.6,
@@ -1035,52 +1059,58 @@
       emissive: 0x29085f,
       emissiveIntensity: 0.7
     });
+    MAT.bar = new THREE.MeshStandardMaterial({
+      color: 0xff8a2b,
+      metalness: 0.45,
+      roughness: 0.32,
+      emissive: 0xff4a12,
+      emissiveIntensity: 0.75
+    });
     MAT.gate = new THREE.MeshBasicMaterial({ color: 0x52f6ff });
     for (let i = 0; i < OBS_COUNT; i++) {
-      const isCoin = Math.random() < 0.25; // 25% chance to be a coin
-      const mesh = isCoin ? new THREE.Mesh(GEO.coin, MAT.coin) : new THREE.Mesh(GEO.cube, MAT.cube);
+      const mesh = new THREE.Mesh(GEO.cube, MAT.cube);
       mesh.visible = false;
       mesh.matrixAutoUpdate = true;
       scene.add(mesh);
-      obstacles.push({
-        mesh,
-        z: 0,
-        prevZ: 0,
-        lane: 0,
-        type: isCoin ? 'coin' : 'cube',
-        hit: false,
-        spin: 0,
-        value: isCoin ? 100 + Math.random() * 200 : 0
-      });
+      obstacles.push({ mesh, z: 0, prevZ: 0, lane: 0, type: 'cube', hit: false, spin: 0 });
     }
   }
 
   function respawnObstacle(o, z) {
-    const hazard = run ? run.hazard : 0.45;
-    const isCoin = o.type === 'coin'; // preserve coin type
-    const gate = !isCoin && Math.random() > hazard;
+    const hazard = run ? run.hazard : 0.42;
+    const roll = Math.random();
+    let type;
+    if (roll < 0.32) type = 'coin';
+    else if (roll < 0.52) type = 'bar';
+    else if (roll < 0.52 + (1 - hazard) * 0.55) type = 'gate';
+    else type = 'cube';
+
     const half = roadWidth / 2;
-    o.type = isCoin ? 'coin' : (gate ? 'gate' : 'cube');
+    o.type = type;
     o.hit = false;
-    o.spin = Math.random() * Math.PI * 2;
+    o.spin = rand(0, Math.PI * 2);
     o.z = z;
     o.prevZ = z;
-    o.lane = isCoin ? rand(-(roadWidth / 2 - 1), roadWidth / 2 - 1) : (gate ? rand(-(half - 3.2), half - 3.2) : rand(-(half - 2.4), half - 2.4));
-    o.mesh.geometry = isCoin ? GEO.coin : (gate ? GEO.gate : GEO.cube);
-    o.mesh.material = isCoin ? MAT.coin : (gate ? MAT.gate : MAT.cube);
+    if (type === 'coin') o.lane = rand(-(half - 1.5), half - 1.5);
+    else if (type === 'bar') o.lane = rand(-(half - 3.5), half - 3.5);
+    else if (type === 'gate') o.lane = rand(-(half - 3.2), half - 3.2);
+    else o.lane = rand(-(half - 2.4), half - 2.4);
+
+    o.mesh.geometry = type === 'coin' ? GEO.coin : type === 'gate' ? GEO.gate : type === 'bar' ? GEO.bar : GEO.cube;
+    o.mesh.material = type === 'coin' ? MAT.coin : type === 'gate' ? MAT.gate : type === 'bar' ? MAT.bar : MAT.cube;
     o.mesh.scale.setScalar(1);
     o.mesh.visible = true;
     const t = trackAt(z);
-    o.mesh.position.set(t.x + o.lane, isCoin ? 0.5 : (gate ? 2.0 : 1.05), z);
-    o.mesh.rotation.set(0, t.heading, isCoin ? 0 : (gate ? o.spin : 0));
-    o.value = isCoin ? 100 + Math.random() * 200 : 0;
+    const y = type === 'coin' ? 0.95 : type === 'gate' ? 2.0 : type === 'bar' ? 2.15 : 1.05;
+    o.mesh.position.set(t.x + o.lane, y, z);
+    o.mesh.rotation.set(0, type === 'coin' ? o.spin : t.heading, type === 'gate' ? o.spin : 0);
   }
 
   function seedObstacles() {
     let z = -130;
     for (const o of obstacles) {
       respawnObstacle(o, z);
-      z -= rand(80, 128);
+      z -= rand(52, 92);
     }
   }
 
@@ -1151,8 +1181,8 @@
     }
     paintMat.color.set(paintColor);
     animateCar(0.016, 0);
-    camera.position.set(0, 6.4, 15.5);
-    camera.fov = 66;
+    camera.position.set(0, 6.4, isPortrait() ? 18 : 15.5);
+    camera.fov = baseFov();
     camera.updateProjectionMatrix();
   }
 
@@ -1172,7 +1202,7 @@
     animateCar(dt, 0);
     camera.position.x = Math.sin(menuTime * 0.24) * 0.8;
     camera.position.y = 6.2 + Math.sin(menuTime * 0.4) * 0.12;
-    camera.position.z = 15.5;
+    camera.position.z = isPortrait() ? 18 : 15.5;
     camera.lookAt(0, 1.0, -30);
     if (stars) stars.rotation.y += dt * 0.005;
     if (sunSprite) sunSprite.material.opacity = 0.65 + Math.sin(menuTime * 0.7) * 0.08;
@@ -1237,12 +1267,21 @@
       elapsed: 0,
       gates: 0,
       gatePoints: 0,
+      coins: 0,
+      coinScore: 0,
       streak: 0,
       shake: 0,
       lastAudio: 0,
-      velocityY: 0,
+      invuln: 0,
       isJumping: false,
-      isSliding: false
+      jumpT: 0,
+      jumpDur: 0.66,
+      jumpOffset: 0,
+      isSliding: false,
+      slideT: 0,
+      slideDur: 0.62,
+      slideOffset: 0,
+      rideY: 0
     };
 
     applyRoadStyle();
@@ -1268,6 +1307,8 @@
     ui.speed.textContent = '000';
     ui.distance.textContent = '0.00';
     ui.score.textContent = '0';
+    if (ui.coinCount) ui.coinCount.textContent = '0';
+    if (ui.actionChip) { ui.actionChip.textContent = ''; ui.actionChip.className = 'action-chip'; }
     ui.nitroPct.textContent = '100%';
     ui.nitroFill.style.width = '100%';
     ui.integrity.textContent = '100%';
@@ -1283,6 +1324,7 @@
   function resetCarForRun() {
     car.position.set(0, 0, CAR_Z);
     car.rotation.set(0, 0, 0);
+    car.scale.set(1, 1, 1);
     paintMat.color.set(paintColor);
     for (const w of transformParts.wings) w.group.rotation.set(0, 0, 0);
     for (const c of transformParts.canards) c.group.rotation.set(0, 0, 0);
@@ -1293,15 +1335,15 @@
       t.flame.material.opacity = 0.08;
       t.glow.intensity = 0;
     }
-    camera.position.set(0, 6.4, 15.5);
-    camera.fov = 66;
+    camera.position.set(0, 6.4, isPortrait() ? 18 : 15.5);
+    camera.fov = baseFov();
     camera.updateProjectionMatrix();
   }
 
   /* ── scoring ────────────────────────────────────────────── */
   function scoreOf(includeIntegrity) {
     if (!run) return 0;
-    const base = run.distance * 1000 + run.gatePoints + run.gates * 40;
+    const base = run.distance * 1000 + run.gatePoints + run.gates * 40 + (run.coinScore || 0);
     return includeIntegrity ? base + run.integrity * 12 : base;
   }
 
@@ -1320,28 +1362,24 @@
   function update(dt) {
     const R = run;
     R.elapsed += dt;
+    R.invuln = Math.max(0, R.invuln - dt);
 
-    /* ── player jump/slide physics ──────────────────── */
+    /* ── jump / slide ──────────────────────────────── */
     if (R.isJumping) {
-      R.velocityY += -0.8 * dt;
-      R.jumpTime += dt;
-      car.position.y = 0.5 + R.velocityY * R.jumpTime;
-      if (R.jumpTime > 0.8 || R.velocityY < 0 && car.position.y < 0.05) {
-        R.isJumping = false;
-        R.jumpTime = 0;
-        R.velocityY = 0;
-        car.position.y = 0;
-      }
-    } else if (R.isSliding) {
-      R.slideTime += dt;
-      car.position.y = -0.3;
-      if (R.slideTime > 0.5) {
-        R.isSliding = false;
-        R.slideTime = 0;
-        car.position.y = 0;
-      }
+      R.jumpT += dt;
+      const jt = Math.min(1, R.jumpT / R.jumpDur);
+      R.jumpOffset = Math.sin(Math.PI * jt) * 2.6;
+      if (jt >= 1) { R.isJumping = false; R.jumpOffset = 0; }
     } else {
-      car.position.y = Math.sin(R.elapsed * 7) * 0.045;
+      R.jumpOffset = 0;
+    }
+    if (R.isSliding) {
+      R.slideT += dt;
+      const st = Math.min(1, R.slideT / R.slideDur);
+      R.slideOffset = -Math.sin(Math.PI * st) * 0.62;
+      if (st >= 1) { R.isSliding = false; R.slideOffset = 0; }
+    } else {
+      R.slideOffset = 0;
     }
 
     if (R.mode === 'endless') {
@@ -1383,23 +1421,27 @@
     car.rotation.z = lerp(car.rotation.z, -R.steer * 0.17, Math.min(1, dt * 6));
     car.rotation.y = lerp(car.rotation.y, carHeading * 0.95 - R.steer * 0.05, Math.min(1, dt * 5));
     const lift = R.rocketActive > 0 ? 1.05 + Math.sin(R.elapsed * 18) * 0.14 : 0;
-    car.position.y = Math.sin(R.elapsed * 7) * 0.045 + lift;
+    const hover = Math.sin(R.elapsed * 7) * 0.045;
+    R.rideY = hover + R.jumpOffset + R.slideOffset + lift;
+    car.position.y = R.rideY;
+    const targetSquash = R.isSliding ? 0.74 : 1;
+    car.scale.y = lerp(car.scale.y, targetSquash, Math.min(1, dt * 12));
 
     const deploy = R.rocketActive > 0 ? 1 : 0;
     animateCar(dt, deploy);
     if (R.rocketActive > 0) R.rocketActive = Math.max(0, R.rocketActive - dt);
 
     const carLane = R.lane;
-    updateObstacles(move, dt, carLane);
+    updateObstacles(move, dt, carLane, R.rideY);
 
     /* camera */
     const ahead = trackAt(CAR_Z - 110);
     const speedNorm = clamp(R.speed / 330, 0, 1);
     camera.position.x = lerp(camera.position.x, car.position.x * 0.5 + (ahead.x - carCenter) * 0.18, Math.min(1, dt * 2.8));
     camera.position.y = lerp(camera.position.y, 6.4 + (R.rocketActive > 0 ? 1.8 : 0) + speedNorm * 0.45, Math.min(1, dt * 2.4));
-    camera.position.z = 15.5;
+    camera.position.z = isPortrait() ? 18 : 15.5;
     camera.lookAt(car.position.x * 0.5 + (ahead.x - carCenter) * 0.55, car.position.y + 0.85, -28);
-    const targetFov = 66 + speedNorm * 4 + (boosting ? 3 : 0) + (R.rocketActive > 0 ? 6 : 0);
+    const targetFov = baseFov() + speedNorm * 4 + (boosting ? 3 : 0) + (R.rocketActive > 0 ? 6 : 0);
     camera.fov = lerp(camera.fov, targetFov, Math.min(1, dt * 2.2));
     camera.updateProjectionMatrix();
 
@@ -1436,58 +1478,108 @@
     }
   }
 
-  function updateObstacles(move, dt, carLane) {
+  function updateObstacles(move, dt, carLane, rideY) {
     const R = run;
+    const carTop = rideY + 1.42;
     for (const o of obstacles) {
       o.prevZ = o.z;
       o.z += move;
-      if (o.z > 42) {
-        respawnObstacle(o, farthestObstacleZ() - rand(70, 110));
+      if (o.z > 46) {
+        respawnObstacle(o, farthestObstacleZ() - rand(52, 92));
         continue;
       }
-      const isCoin = o.type === 'coin';
-      const gate = o.type === 'gate';
       const t = trackAt(o.z);
       o.mesh.position.x = t.x + o.lane;
       o.mesh.position.z = o.z;
-      if (isCoin) {
-        /* ── coin collection ──────────────────────── */
-        const coinCollected = o.prevZ < CAR_Z && o.z >= CAR_Z && Math.abs(o.lane - carLane) < 1.5;
-        if (coinCollected && !o.hit) {
-          o.hit = true;
-          R.score += o.value;
-          R.gates += o.value / 10; /* scale gates from coin value */
-          showToast('COIN · +' + Math.round(o.value), 'good');
-          o.mesh.visible = false;
-          respawnObstacle(o, farthestObstacleZ() - rand(70, 110));
-          continue;
-        }
-      }
-      if (gate) {
+
+      if (o.type === 'coin') {
+        o.spin += dt * 2.6;
+        o.mesh.rotation.set(0, o.spin, 0);
+        o.mesh.position.y = 0.95 + Math.sin(R.elapsed * 3 + o.spin) * 0.08;
+      } else if (o.type === 'gate') {
         o.spin += dt * 1.1;
         o.mesh.rotation.set(0, t.heading, o.spin);
         o.mesh.scale.setScalar(1 + Math.sin(R.elapsed * 4 + o.spin) * 0.03);
       } else {
         o.mesh.rotation.set(0, t.heading, 0);
+        o.mesh.position.y = o.type === 'bar'
+          ? 2.15 + Math.sin(R.elapsed * 3 + o.spin) * 0.04
+          : 1.05;
       }
-      if (!o.hit && o.prevZ < CAR_Z && o.z >= CAR_Z) {
-        const lateral = Math.abs(o.lane - carLane);
-        if (lateral < (gate ? 1.65 : 2.25)) {
+
+      if (o.hit) continue;
+      if (!(o.prevZ < CAR_Z && o.z >= CAR_Z)) continue;
+
+      const lateral = Math.abs(o.lane - carLane);
+      if (o.type === 'coin') {
+        if (lateral < 1.75) collectCoin(o);
+        continue;
+      }
+      if (o.type === 'gate') {
+        if (lateral < 1.9) {
           o.hit = true;
-          if (gate) gateHit();
-          else impactHit();
-          if (state !== 'running') return;
+          gateHit();
         }
+        continue;
       }
+      if (o.type === 'bar') {
+        /* overhead barrier — slide under it or steer around it */
+        if (R.invuln <= 0 && lateral < 3.4 && carTop > 1.06) {
+          o.hit = true;
+          impactHit();
+        }
+        continue;
+      }
+      /* cube — jump over it or steer around it */
+      if (R.invuln <= 0 && lateral < 2.35 && rideY < 2.05) {
+        o.hit = true;
+        impactHit();
+      }
+      if (state !== 'running') return;
     }
+  }
+
+  function doJump() {
+    if (state !== 'running' || !run || run.isJumping) return;
+    run.isSliding = false;
+    run.slideOffset = 0;
+    run.isJumping = true;
+    run.jumpT = 0;
+    Sound.jump();
+    if (navigator.vibrate) navigator.vibrate(12);
+  }
+
+  function doSlide() {
+    if (state !== 'running' || !run || run.isSliding || run.isJumping) return;
+    run.isSliding = true;
+    run.slideT = 0;
+    Sound.slide();
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  function collectCoin(o) {
+    const R = run;
+    o.hit = true;
+    R.coins += 1;
+    R.coinScore += 50;
+    R.nitro = Math.min(100, R.nitro + 3);
+    Sound.coin();
+    if (ui.coinCount) {
+      ui.coinCount.classList.remove('pop');
+      void ui.coinCount.offsetWidth;
+      ui.coinCount.classList.add('pop');
+    }
+    if (navigator.vibrate) navigator.vibrate(8);
+    respawnObstacle(o, farthestObstacleZ() - rand(52, 92));
   }
 
   function impactHit() {
     const R = run;
-    R.integrity = Math.max(0, R.integrity - 18);
+    R.integrity = Math.max(0, R.integrity - 14);
     R.speed *= 0.55;
     R.streak = 0;
     R.shake = 0.55;
+    R.invuln = 0.7;
     Sound.impact();
     flash('impact');
     if (navigator.vibrate) navigator.vibrate(45);
@@ -1561,15 +1653,12 @@
     }
     ui.rocketProgress.style.width = Math.min(100, (R.distance / UNLOCK_KM) * 100) + '%';
 
-    /* jump/slide state display */
-    if (R.isJumping) {
-      ui.toast.textContent = 'JUMP';
-      ui.toast.className = 'toast show jumping';
-    } else if (R.isSliding) {
-      ui.toast.textContent = 'SLIDE';
-      ui.toast.className = 'toast show sliding';
-    } else {
-      ui.toast.className = 'toast';
+    /* coins + jump/slide state (separate from toast so messages still show) */
+    if (ui.coinCount) ui.coinCount.textContent = String(R.coins);
+    if (ui.actionChip) {
+      const action = R.isJumping ? 'JUMP' : R.isSliding ? 'SLIDE' : '';
+      ui.actionChip.textContent = action;
+      ui.actionChip.className = 'action-chip' + (action ? ' on' : '');
     }
 
     ui.gateCount.textContent = String(R.gates);
@@ -1622,6 +1711,7 @@
       score: scoreValue,
       distance: run.distance,
       gates: run.gates,
+      coins: run.coins,
       topSpeed: Math.round(run.topSpeed),
       integrity: Math.round(run.integrity),
       clear: !!clear
@@ -1678,12 +1768,13 @@
         ? 'Circuit complete — ' + run.distance.toFixed(2) + ' km of your own ' + layout.name + '.'
         : 'Circuit ended at ' + run.distance.toFixed(2) + ' km. Adjust the circuit and try again.';
     } else {
-      ui.resultText.textContent = 'Flight ended after ' + run.distance.toFixed(2) + ' km and ' + run.gates + ' boost gates. Every run rewrites the record.';
+      ui.resultText.textContent = 'Flight ended after ' + run.distance.toFixed(2) + ' km, ' + run.gates + ' boost gates and ' + run.coins + ' coins. Every run rewrites the record.';
     }
 
     ui.resultBadge.classList.toggle('show', !!isBest);
     ui.resultStats.innerHTML = [
       ['DISTANCE', run.distance.toFixed(2) + ' KM'],
+      ['COINS', String(run.coins)],
       ['BOOST GATES', String(run.gates)],
       ['TOP SPEED', Math.round(run.topSpeed) + ' KM/H'],
       ['INTEGRITY', Math.round(run.integrity) + '%']
@@ -1720,6 +1811,7 @@
     ui.pauseStats.innerHTML =
       '<span>DIST ' + run.distance.toFixed(2) + ' KM</span>' +
       '<span>SCORE ' + fmt(scoreOf()) + '</span>' +
+      '<span>COINS ' + run.coins + '</span>' +
       '<span>GATES ' + run.gates + '</span>';
     ui.pause.hidden = false;
     Sound.engineActive(false);
@@ -1869,12 +1961,10 @@
   const touchHeld = { accel: false, brake: false, left: false, right: false, nitro: false, jump: false, slide: false };
   const ACT_KEYS = {
     accel: ['KeyW', 'ArrowUp'],
-    brake: ['KeyS', 'ArrowDown'],
+    brake: ['KeyX'],
     left: ['KeyA', 'ArrowLeft'],
     right: ['KeyD', 'ArrowRight'],
-    nitro: ['ShiftLeft', 'ShiftRight'],
-    jump: ['Space'],
-    slide: ['KeyS', 'ArrowDown']
+    nitro: ['ShiftLeft', 'ShiftRight']
   };
 
   function held(action) {
@@ -2001,16 +2091,10 @@
       }
       if (e.repeat) return;
       if (e.code === 'KeyR') activateRocket();
-      else if (e.code === 'Space') {
-        if (state === 'running' && !R.isJumping && !R.isSliding) {
-          R.isJumping = true;
-          R.velocityY = 4.5;
-        }
-      } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
-        if (state === 'running' && !R.isJumping && !R.isSliding) {
-          R.isSliding = true;
-        }
-      } else if (e.code === 'KeyM') toggleSound();
+      else if (e.code === 'Space') doJump();
+      else if (e.code === 'KeyS' || e.code === 'ArrowDown') doSlide();
+      else if (e.code === 'KeyM') toggleSound();
+      else if (e.code === 'KeyF') toggleFullscreen();
       else if (e.code === 'Escape') {
         if (state === 'running') pauseRun();
         else if (state === 'paused') resumeRun();
@@ -2030,16 +2114,19 @@
       const action = btn.dataset.act;
       const down = (e) => {
         e.preventDefault();
+        e.stopPropagation();
         btn.classList.add('active');
         if (action === 'rocket') activateRocket();
+        else if (action === 'jump') doJump();
+        else if (action === 'slide') doSlide();
         else touchHeld[action] = true;
       };
       const up = (e) => {
         e.preventDefault();
         btn.classList.remove('active');
-        if (action !== 'rocket') touchHeld[action] = false;
-        if (action === 'jump') R.isJumping = false;
-        if (action === 'slide') R.isSliding = false;
+        if (action === 'accel' || action === 'brake' || action === 'left' || action === 'right' || action === 'nitro') {
+          touchHeld[action] = false;
+        }
       };
       btn.addEventListener('pointerdown', down);
       btn.addEventListener('pointerup', up);
@@ -2047,15 +2134,96 @@
       btn.addEventListener('pointerleave', up);
     });
     $('touch').addEventListener('contextmenu', (e) => e.preventDefault());
+
+    initTouchGestures();
+    $('fullscreenBtn').addEventListener('click', toggleFullscreen);
+  }
+
+  /* swipe up = jump, swipe down = slide, drag sideways = steer */
+  function initTouchGestures() {
+    const surface = $('game');
+    if (!surface) return;
+    let id = null;
+    let startX = 0;
+    let startY = 0;
+    let startLane = 0;
+    let mode = null;
+
+    surface.addEventListener('pointerdown', (e) => {
+      if (state !== 'running' || !run) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      id = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLane = run.lane;
+      mode = null;
+      if (surface.setPointerCapture) {
+        try { surface.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      }
+    });
+
+    surface.addEventListener('pointermove', (e) => {
+      if (id !== e.pointerId || !run || state !== 'running') return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!mode) {
+        if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+        mode = Math.abs(dx) > Math.abs(dy) ? 'steer' : dy < 0 ? 'jump' : 'slide';
+        if (mode === 'jump') { doJump(); return; }
+        if (mode === 'slide') { doSlide(); return; }
+      }
+      if (mode === 'steer') {
+        const half = roadWidth / 2 - 1.15;
+        const travel = Math.max(64, window.innerWidth * 0.26);
+        run.lane = clamp(startLane + (dx / travel) * half * 1.35, -half, half);
+      }
+    });
+
+    const end = (e) => {
+      if (id !== e.pointerId) return;
+      id = null;
+      mode = null;
+    };
+    surface.addEventListener('pointerup', end);
+    surface.addEventListener('pointercancel', end);
+    surface.addEventListener('pointerleave', end);
+
+    document.addEventListener('contextmenu', (e) => {
+      if (state === 'running') e.preventDefault();
+    });
+  }
+
+  function toggleFullscreen() {
+    const doc = document;
+    const el = doc.documentElement;
+    const isFull = doc.fullscreenElement || doc.webkitFullscreenElement;
+    if (!isFull) {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) {
+        const p = req.call(el);
+        if (p && p.catch) p.catch(() => {});
+      }
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } else {
+      const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+      if (exit) {
+        const p = exit.call(doc);
+        if (p && p.catch) p.catch(() => {});
+      }
+    }
+    Sound.ui();
   }
 
   /* ── resize + loop + boot ───────────────────────────────── */
   function onResize() {
     if (!renderer || !camera) return;
     camera.aspect = window.innerWidth / window.innerHeight;
+    if (state !== 'running') camera.fov = baseFov();
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MOBILE ? 1.5 : 2));
   }
 
   function loop(now) {
@@ -2103,7 +2271,11 @@
         speed: run ? +run.speed.toFixed(1) : 0,
         integrity: run ? +run.integrity.toFixed(0) : 100,
         gates: run ? run.gates : 0,
+        coins: run ? run.coins : 0,
         lane: run ? +run.lane.toFixed(2) : 0,
+        isJumping: run ? !!run.isJumping : false,
+        isSliding: run ? !!run.isSliding : false,
+        rideY: run ? +run.rideY.toFixed(2) : 0,
         rocketUnlocked: run ? !!run.rocketUnlocked : false,
         rocketActive: run ? +run.rocketActive.toFixed(2) : 0,
         obstacles: obstacles.map(function (o) {
@@ -2122,9 +2294,12 @@
         distance: +run.distance.toFixed(3),
         integrity: Math.round(run.integrity),
         gates: run.gates,
+        coins: run.coins,
         score: Math.round(scoreOf(true))
       };
     },
+    jump: doJump,
+    slide: doSlide,
     capture: function (quality) {
       renderer.render(scene, camera);
       return renderer.domElement.toDataURL('image/jpeg', quality || 0.8);

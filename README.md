@@ -15,12 +15,16 @@ A neon arcade roadster flight simulator built with Three.js r161 (vendored) and 
 | ← / A / Left | Steer left |
 | → / D / Right | Steer right |
 | W / Up / Accel | Accelerate |
-| S / Down / Brake | Brake / reverse |
+| Space / Jump | Jump over cubes |
+| S / Down / Slide | Slide under overhead barriers |
 | Shift / Nitro | Nitro boost (fills when not boosting) |
-| R | Rocket (unlock at 1.0 km in endless / finish a trial) |
+| R | Rocket (unlock at 0.5 km in endless / finish a trial) |
 | M | Toggle sound |
+| F | Fullscreen (mobile / desktop) |
 | ESC | Pause / resume / return to menu |
-| Touch buttons | Same actions on mobile |
+| Swipe ← → | Steer on touch (drag anywhere on the track) |
+| Swipe ↑ / ↓ | Jump / slide on touch |
+| Touch buttons | Steer, jump, slide, accelerate, brake, nitro, rocket |
 
 ## Feature List
 
@@ -28,16 +32,17 @@ A neon arcade roadster flight simulator built with Three.js r161 (vendored) and 
 - ✅ Curved tracks via ordered segment queue (`trackAt(z)`) with sinusoidal heading steering
 - ✅ Instanced road + city meshes — ~12 draw calls instead of ~500
 - ✅ Pooled obstacles with swept collision (crossing `prevZ`/`z` at car z‑plane) — no tunnelling at rocket speed
+- ✅ Subway‑Surfers style run: jump over cubes, slide under overhead barriers, steer around traffic
+- ✅ Collectible spinning coins (+50 score each, HUD coin counter, coin pickup SFX)
 - ✅ Explicit `paintMat` — no heuristic recolouring
-- ✅ Rocket protocol (unlock at 1.0 km, 4.6 s boost)
-- ✅ WebAudio synthesized engine, gate tones, impact flashes, transform SFX
+- ✅ Rocket protocol (unlock at 0.5 km, 4.6 s boost)
+- ✅ WebAudio synthesized engine, coin/gate tones, jump/slide/impact SFX, transform SFX
 - ✅ Bloom‑free neon polish: sky sphere, orbital planet ring, speed streaks, camera shake / FOV shift
-- ✅ HUD with speed, distance, score, integrity, nitro, gate count, streak × multiplier
-- ✅ Sequential level unlocks + "Unlock All" / "Reset Progress" escape hatches
+- ✅ HUD with speed, distance, score, coins, integrity, nitro, gate count, streak × multiplier
+- ✅ Sequentially unlocked campaign + "Unlock All" / "Reset Progress" escape hatches
 - ✅ Save/Load via `localStorage` (key: `nebula-drive-v2`)
-- ✅ Touch controls with rocket button
+- ✅ Full mobile support: swipe steering, jump/slide gestures, large touch targets, safe‑area insets, portrait + landscape layouts, fullscreen button, reduced render cost
 - ✅ Reduced‑motion respect (`prefers-reduced-motion`)
-- ✅ Responsive layout (desktop + mobile media queries)
 - ✅ Runtime error overlay — shows `boot` message if Three.js fails to load
 
 ## Build / Run
@@ -67,18 +72,20 @@ nebula drive/
 
 ## Controls Detail
 
-- **Rocket**: Unlock after traveling 1.0 km (endless) or finishing a trial. Press **R** to deploy — the roadster transforms and speed spikes to 325 km/h for ~4.6 s.
+- **Rocket**: Unlock after traveling 0.5 km (endless) or finishing a trial. Press **R** to deploy — the roadster transforms and speed spikes to 325 km/h for ~4.6 s.
 - **Nitro**: Holds while held, depletes while active. Recharges when not boosting.
-- **Assist**: Smooths steering in the pause‑menu toggle. Without it, steering is snappier.
-- **Touch**: Tap the rocket button to deploy (only when unlocked). Other touch buttons steer, accelerate, brake, and nitro.
+- **Assist**: Smooths steering in the pause-menu toggle. Without it, steering is snappier.
+- **Jump / Slide**: Jump clears cubes; slide clears overhead orange barriers. Both are available from the keyboard, the touch buttons, and swipes.
+- **Touch**: Drag anywhere to steer, swipe up to jump, swipe down to slide. Dedicated buttons are also available at the bottom of the screen.
+- **Coin counter**: Coins contribute +50 score each and a small nitro refill.
 
 ## Save Data
 
 Progress is stored in `localStorage` under key `nebula-drive-v2`. The save object contains:
 
-- `levels` — per‑trial scores, distances, gates, integrity, clear flags
+- `levels` — per‑trial scores, distances, gates, coins, integrity, clear flags
 - `endless` — best distance and score
-- `custom` — best score/distance/gates
+- `custom` — best score/distance/gates/coins
 - `allUnlocked` — whether all 20 campaign trials are unlocked
 - `settings` — sound, assist, paint colour, road glow, track length, traffic density, layout choice
 

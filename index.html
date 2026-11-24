@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#050812" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Nebula Drive" />
+<meta name="format-detection" content="telephone=no" />
 <meta name="description" content="NEBULA DRIVE — a neon arcade roadster flight simulator. Endless protocol, 20 flight trials and four custom circuits." />
 <title>NEBULA DRIVE — Flight Protocol</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23050812'/%3E%3Cpath d='M14 46 L32 14 L50 46' fill='none' stroke='%2352f6ff' stroke-width='5' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='40' r='5' fill='%23ff4fd8'/%3E%3C/svg%3E" />
@@ -71,26 +76,30 @@
   <div class="controls">
     <div class="controlkey"><b>← A</b>STEER</div>
     <div class="controlkey"><b>W ↑</b>ACCELERATE</div>
-    <div class="controlkey"><b>S ↓</b>BRAKE</div>
+    <div class="controlkey"><b>SPACE</b>JUMP</div>
+    <div class="controlkey"><b>S ↓</b>SLIDE</div>
     <div class="controlkey nitro"><b>SHIFT</b>NITRO</div>
     <div class="controlkey rocket"><b>R</b>ROCKET</div>
     <div class="controlkey"><b>ESC</b>PAUSE</div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="action-chip" id="actionChip" aria-live="polite"></div>
 
   <div id="touch">
-    <div class="touchgroup">
+    <div class="touchgroup steer">
       <button class="touchbtn" data-act="left" aria-label="Steer left">◀</button>
       <button class="touchbtn" data-act="right" aria-label="Steer right">▶</button>
     </div>
-    <div class="touchgroup right">
+    <div class="touchgroup acts">
+      <button class="touchbtn actbtn jump" data-act="jump" aria-label="Jump">JUMP</button>
+      <button class="touchbtn actbtn slide" data-act="slide" aria-label="Slide">SLIDE</button>
+    </div>
+    <div class="touchgroup sys">
       <button class="touchbtn small" data-act="brake" aria-label="Brake">BRK</button>
       <button class="touchbtn small" data-act="nitro" aria-label="Nitro">N₂O</button>
-      <button class="touchbtn go" data-act="accel" aria-label="Accelerate">GO</button>
       <button class="touchbtn rocket" data-act="rocket" aria-label="Rocket">R</button>
-      <button class="touchbtn small" data-act="jump" aria-label="Jump">J</button>
-      <button class="touchbtn small" data-act="slide" aria-label="Slide">S</button>
+      <button class="touchbtn go" data-act="accel" aria-label="Accelerate">GO</button>
     </div>
   </div>
 </div>
@@ -109,8 +118,9 @@
         <div class="feature"><b>∞</b><span>endless run</span></div>
       </div>
 
-      <div class="statusline"><i class="dot"></i> SIMULATION SYSTEMS ONLINE <span>/</span> BUILD 2.0</div>
+      <div class="statusline"><i class="dot"></i> SIMULATION SYSTEMS ONLINE <span>/</span> BUILD 2.1</div>
       <div class="hero-best" id="heroBest"></div>
+      <div class="rotate-hint">↻ Rotate to landscape for the full cockpit view</div>
     </section>
 
     <section class="panel">
@@ -154,11 +164,13 @@
         </div>
 
         <button class="primary" id="startBtn">IGNITE ENGINE <span>↗</span></button>
-        <div class="footnote">Best played in landscape · WASD / Arrows · SHIFT nitro · R rocket · M mute · ESC pause</div>
+        <div class="mobile-hint">SWIPE ← → TO STEER · SWIPE ↑ JUMP · SWIPE ↓ SLIDE</div>
+        <div class="footnote">Desktop: WASD / Arrows · SPACE jump · S slide · SHIFT nitro · R rocket · M mute · ESC pause</div>
       </div>
 
       <div class="panel-footer">
         <button class="linkbtn" id="soundBtnMenu">SOUND: ON</button>
+        <button class="linkbtn" id="fullscreenBtn">FULLSCREEN</button>
         <span class="tiny" id="footerStats"></span>
       </div>
     </section>
