@@ -29,7 +29,7 @@ A neon arcade roadster flight simulator built with Three.js r161 (vendored) and 
 ## Feature List
 
 - ✅ Vendored Three.js r161 IIFE bundle — runs offline from `file://`
-- ✅ Curved tracks via ordered segment queue (`trackAt(z)`) with sinusoidal heading steering
+- ✅ Straight multi-lane highway — Subway-Surfers style straight track (no curves)
 - ✅ Instanced road + city meshes — ~12 draw calls instead of ~500
 - ✅ Pooled obstacles with swept collision (crossing `prevZ`/`z` at car z‑plane) — no tunnelling at rocket speed
 - ✅ Subway‑Surfers style run: jump over cubes, slide under overhead barriers, steer around traffic

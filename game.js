@@ -8,6 +8,7 @@
      · full mobile support: swipe steering, large touch targets, safe areas,
        portrait + landscape HUD layouts, fullscreen, reduced render cost
      · fixed jump/slide NaN state, duplicate key handling and toast clearing
+     · straight Subway-Surfers-style highway track (curves removed)
 
    Fixed vs 1.0
      · swept obstacle collision (no tunnelling at rocket speed)
@@ -19,7 +20,7 @@
      · three.js vendored locally, clear failure state
 
    New
-     · genuinely curved tracks: Sky Flow / Neon Zigzag / Orbital Ring / Tunnel
+     · straight multi-lane highway (Subway-Surfers style)
      · instanced road and city (≈12 draw calls instead of ~500)
      · campaign difficulty curve, unlocks, personal bests, score + streaks
      · WebAudio engine and effects, speed streaks, camera juice
@@ -250,35 +251,30 @@
   };
 
   /* ── layouts + campaign ──────────────────────────────────── */
-  const LAYOUTS = {
-    flow: { name: 'Sky Flow', desc: 'Long, sweeping arcs above the cloud deck. The classic run.', amp: 0.16, freq: 0.10, ctrl: 0.3, width: 17, walls: false },
-    zigzag: { name: 'Neon Zigzag', desc: 'Sharp alternating switchbacks. Light on the brakes.', amp: 0.44, freq: 0.48, ctrl: 0.55, width: 16, walls: false },
-    ring: { name: 'Orbital Ring', desc: 'A wide halo arc that never stops curving. Hold your line.', amp: 0.5, freq: 0.028, ctrl: 0.18, width: 16, walls: false },
-    tunnel: { name: 'Tunnel Run', desc: 'Narrow service conduit between the towers. No room for error.', amp: 0.08, freq: 0.07, ctrl: 0.26, width: 12.4, walls: true }
-  };
-  const LAYOUT_KEYS = Object.keys(LAYOUTS);
+  const LAYOUTS = { flow: { name: 'Highway', desc: 'Straight multi-lane highway', width: 17, walls: true } };
+  const LAYOUT_KEYS = ['flow'];
 
   const LEVELS = [
     { name: 'First Light', layout: 'flow', km: 0.8, hazard: 0.34, speed: 0.94 },
-    { name: 'Neon Canyon', layout: 'zigzag', km: 1.0, hazard: 0.4, speed: 0.96 },
+    { name: 'Neon Canyon', layout: 'flow', km: 1.0, hazard: 0.4, speed: 0.96 },
     { name: 'Cloud Runner', layout: 'flow', km: 1.2, hazard: 0.42, speed: 0.98 },
-    { name: 'Ion Storm', layout: 'tunnel', km: 1.4, hazard: 0.48, speed: 1.0 },
-    { name: 'Glass Horizon', layout: 'ring', km: 1.6, hazard: 0.45, speed: 1.01 },
-    { name: 'Pulse Highway', layout: 'zigzag', km: 1.8, hazard: 0.5, speed: 1.02 },
+    { name: 'Ion Storm', layout: 'flow', km: 1.4, hazard: 0.48, speed: 1.0 },
+    { name: 'Glass Horizon', layout: 'flow', km: 1.6, hazard: 0.45, speed: 1.01 },
+    { name: 'Pulse Highway', layout: 'flow', km: 1.8, hazard: 0.5, speed: 1.02 },
     { name: 'Skyline Drift', layout: 'flow', km: 2.0, hazard: 0.5, speed: 1.03 },
-    { name: 'Solar Gate', layout: 'ring', km: 2.2, hazard: 0.46, speed: 1.04 },
-    { name: 'Zero Gravity', layout: 'tunnel', km: 2.4, hazard: 0.55, speed: 1.05 },
-    { name: 'Thunder Loop', layout: 'zigzag', km: 2.6, hazard: 0.55, speed: 1.06 },
+    { name: 'Solar Gate', layout: 'flow', km: 2.2, hazard: 0.46, speed: 1.04 },
+    { name: 'Zero Gravity', layout: 'flow', km: 2.4, hazard: 0.55, speed: 1.05 },
+    { name: 'Thunder Loop', layout: 'flow', km: 2.6, hazard: 0.55, speed: 1.06 },
     { name: 'Crystal Pass', layout: 'flow', km: 2.8, hazard: 0.52, speed: 1.07 },
-    { name: 'Afterburn', layout: 'ring', km: 3.0, hazard: 0.5, speed: 1.08 },
-    { name: 'Phantom Grid', layout: 'tunnel', km: 3.2, hazard: 0.58, speed: 1.09 },
+    { name: 'Afterburn', layout: 'flow', km: 3.0, hazard: 0.5, speed: 1.08 },
+    { name: 'Phantom Grid', layout: 'flow', km: 3.2, hazard: 0.58, speed: 1.09 },
     { name: 'Aurora Rush', layout: 'flow', km: 3.4, hazard: 0.55, speed: 1.1 },
-    { name: 'Redline', layout: 'zigzag', km: 3.6, hazard: 0.6, speed: 1.12 },
-    { name: 'Starfall', layout: 'ring', km: 3.8, hazard: 0.55, speed: 1.13 },
-    { name: 'Dark Matter', layout: 'tunnel', km: 4.0, hazard: 0.62, speed: 1.15 },
+    { name: 'Redline', layout: 'flow', km: 3.6, hazard: 0.6, speed: 1.12 },
+    { name: 'Starfall', layout: 'flow', km: 3.8, hazard: 0.55, speed: 1.13 },
+    { name: 'Dark Matter', layout: 'flow', km: 4.0, hazard: 0.62, speed: 1.15 },
     { name: 'Hyperion', layout: 'flow', km: 4.2, hazard: 0.58, speed: 1.16 },
-    { name: 'Event Horizon', layout: 'ring', km: 4.4, hazard: 0.6, speed: 1.18 },
-    { name: 'Final Ignition', layout: 'zigzag', km: 4.6, hazard: 0.65, speed: 1.2 }
+    { name: 'Event Horizon', layout: 'flow', km: 4.4, hazard: 0.6, speed: 1.18 },
+    { name: 'Final Ignition', layout: 'flow', km: 4.6, hazard: 0.65, speed: 1.2 }
   ];
 
   /* ── world constants + state ─────────────────────────────── */
@@ -752,36 +748,14 @@
   function extendTrack(seg) {
     const last = segments[segments.length - 1];
     const n = trackN++;
-    let target = 0;
-    if (n > 8) {
-      target = activeCfg.amp * Math.sin(n * activeCfg.freq);
-      if (activeCfg.amp2) target += activeCfg.amp2 * Math.sin(n * activeCfg.freq2);
-    }
-    const heading = last.heading + (target - last.heading) * activeCfg.ctrl;
-    const mid = (last.heading + heading) * 0.5;
-    seg.heading = heading;
-    seg.x = last.x + Math.sin(mid) * SEG_LEN;
-    seg.z = last.z - Math.cos(mid) * SEG_LEN;
+    // straight line: x stays 0, z just decrements
+    seg.heading = 0;
+    seg.x = 0;
+    seg.z = last.z - SEG_LEN;
   }
 
   function trackAt(z) {
-    if (!segments.length) return { x: 0, heading: 0 };
-    const first = segments[0];
-    const last = segments[segments.length - 1];
-    if (z >= first.z) return first;
-    if (z <= last.z) return last;
-    let lo = 0;
-    let hi = segments.length - 1;
-    while (lo + 1 < hi) {
-      const mid = (lo + hi) >> 1;
-      if (segments[mid].z >= z) lo = mid;
-      else hi = mid;
-    }
-    const a = segments[lo];
-    const b = segments[hi];
-    const span = a.z - b.z || 1;
-    const t = (a.z - z) / span;
-    return { x: a.x + (b.x - a.x) * t, heading: a.heading + (b.heading - a.heading) * t };
+    return { x: 0, heading: 0 };
   }
 
   function moveWorld(move) {
@@ -1410,16 +1384,14 @@
     moveWorld(move);
 
     /* steering + road-relative clamp */
-    const carCenter = trackAt(CAR_Z).x;
-    const half = roadWidth / 2;
     const steerInput = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     R.steer += (steerInput - R.steer) * Math.min(1, dt * (R.assist ? 4.2 : 7.5));
     const lateralSpeed = R.assist ? 9.5 : 13.5;
-    R.lane = clamp(R.lane + R.steer * dt * lateralSpeed, -half + 1.15, half - 1.15);
-    car.position.x = carCenter + R.lane;
-    const carHeading = trackAt(CAR_Z).heading;
+    R.lane = clamp(R.lane + R.steer * dt * lateralSpeed, -roadWidth/2 + 1.15, roadWidth/2 - 1.15);
+    car.position.x = R.lane;
+    const carHeading = 0;
     car.rotation.z = lerp(car.rotation.z, -R.steer * 0.17, Math.min(1, dt * 6));
-    car.rotation.y = lerp(car.rotation.y, carHeading * 0.95 - R.steer * 0.05, Math.min(1, dt * 5));
+    car.rotation.y = lerp(car.rotation.y, - R.steer * 0.05, Math.min(1, dt * 5));
     const lift = R.rocketActive > 0 ? 1.05 + Math.sin(R.elapsed * 18) * 0.14 : 0;
     const hover = Math.sin(R.elapsed * 7) * 0.045;
     R.rideY = hover + R.jumpOffset + R.slideOffset + lift;
@@ -1435,12 +1407,11 @@
     updateObstacles(move, dt, carLane, R.rideY);
 
     /* camera */
-    const ahead = trackAt(CAR_Z - 110);
     const speedNorm = clamp(R.speed / 330, 0, 1);
-    camera.position.x = lerp(camera.position.x, car.position.x * 0.5 + (ahead.x - carCenter) * 0.18, Math.min(1, dt * 2.8));
+    camera.position.x = lerp(camera.position.x, car.position.x * 0.5, Math.min(1, dt * 2.8));
     camera.position.y = lerp(camera.position.y, 6.4 + (R.rocketActive > 0 ? 1.8 : 0) + speedNorm * 0.45, Math.min(1, dt * 2.4));
     camera.position.z = isPortrait() ? 18 : 15.5;
-    camera.lookAt(car.position.x * 0.5 + (ahead.x - carCenter) * 0.55, car.position.y + 0.85, -28);
+    camera.lookAt(car.position.x * 0.5, car.position.y + 0.85, -28);
     const targetFov = baseFov() + speedNorm * 4 + (boosting ? 3 : 0) + (R.rocketActive > 0 ? 6 : 0);
     camera.fov = lerp(camera.fov, targetFov, Math.min(1, dt * 2.2));
     camera.updateProjectionMatrix();
